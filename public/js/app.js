@@ -226,10 +226,22 @@
       $('#draw-offer-popup').style.display = 'none';
     });
 
-    // New game button
+    // New game button (game over overlay)
     $('#new-game-btn').addEventListener('click', () => {
-      clearSession();
-      window.location.href = '/';
+      resetToLobby();
+    });
+
+    // Cancel game button (invite screen)
+    $('#cancel-game-btn').addEventListener('click', () => {
+      resetToLobby();
+    });
+
+    // Leave game button (during game)
+    $('#leave-game-btn').addEventListener('click', () => {
+      if (gameActive) {
+        if (!confirm('Leave the game? You may lose by abandonment if you don\'t return.')) return;
+      }
+      resetToLobby();
     });
 
     // Promotion buttons
@@ -277,6 +289,39 @@
     }
   }
 
+  // === RESET ===
+  function resetToLobby() {
+    clearSession();
+    if (socket) {
+      socket.disconnect();
+      socket = null;
+    }
+    gameId = null;
+    playerId = null;
+    myColor = null;
+    board = null;
+    currentTurn = 'white';
+    gameActive = false;
+    moveHistoryMoves = [];
+
+    // Clear UI state
+    $('#move-list').innerHTML = '';
+    $('#self-captured').innerHTML = '';
+    $('#opponent-captured').innerHTML = '';
+    $('#game-over-overlay').style.display = 'none';
+    $('#draw-offer-popup').style.display = 'none';
+    $('#promotion-dialog').style.display = 'none';
+    $('#resign-btn').style.display = 'none';
+    $('#draw-btn').style.display = 'none';
+    $('#board').innerHTML = '';
+    $('#create-name').value = '';
+    $('#create-btn').disabled = false;
+
+    // Reset URL and show lobby
+    history.pushState(null, '', '/');
+    showLobby();
+  }
+
   // === GAME SCREEN ===
   function switchToGameScreen() {
     lobbyScreen.classList.remove('active');
@@ -305,11 +350,15 @@
     });
 
     socket.on('game-state', (state) => {
-      // Always ensure we're on the game screen with a board
+      // If game is still waiting for opponent, stay on invite screen
+      if (state.status === 'waiting') {
+        return;
+      }
+
+      // Game is active or completed — switch to game screen
       if (!board) {
         switchToGameScreen();
       }
-      // Make sure lobby is hidden and game is shown
       lobbyScreen.classList.remove('active');
       gameScreen.classList.add('active');
 
@@ -351,7 +400,7 @@
     });
 
     socket.on('game-ready', (data) => {
-      // Transition to game screen if still on lobby (creator waiting for opponent)
+      // Both players transition to game screen
       if (!board) {
         switchToGameScreen();
       }
@@ -362,16 +411,22 @@
       $('#self-name').textContent = isWhite ? data.whiteName : data.blackName;
       $('#opponent-name').textContent = isWhite ? data.blackName : data.whiteName;
 
-      // Set piece icons in case they weren't set yet
+      // Set piece icons
       $('#self-piece-icon').innerHTML = `<img src="/assets/pieces/${myColor}_king.svg" alt="">`;
       const oppColor = myColor === 'white' ? 'black' : 'white';
       $('#opponent-piece-icon').innerHTML = `<img src="/assets/pieces/${oppColor}_king.svg" alt="">`;
+
+      // Both connected
+      $('#self-connection').className = 'connection-dot connected';
       $('#opponent-connection').className = 'connection-dot connected';
 
       gameActive = true;
       currentTurn = 'white';
 
-      // Re-request game state to get legal moves and full board
+      // Set starting position and enable moves for white
+      board.setPosition('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1');
+
+      // Request full game state to get legal moves
       socket.emit('join-game', { gameId, playerId });
     });
 
