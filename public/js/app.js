@@ -305,9 +305,13 @@
     });
 
     socket.on('game-state', (state) => {
+      // Always ensure we're on the game screen with a board
       if (!board) {
         switchToGameScreen();
       }
+      // Make sure lobby is hidden and game is shown
+      lobbyScreen.classList.remove('active');
+      gameScreen.classList.add('active');
 
       // Set board position
       board.setPosition(state.fen);
@@ -347,12 +351,28 @@
     });
 
     socket.on('game-ready', (data) => {
+      // Transition to game screen if still on lobby (creator waiting for opponent)
+      if (!board) {
+        switchToGameScreen();
+      }
+      lobbyScreen.classList.remove('active');
+      gameScreen.classList.add('active');
+
       const isWhite = myColor === 'white';
       $('#self-name').textContent = isWhite ? data.whiteName : data.blackName;
       $('#opponent-name').textContent = isWhite ? data.blackName : data.whiteName;
+
+      // Set piece icons in case they weren't set yet
+      $('#self-piece-icon').innerHTML = `<img src="/assets/pieces/${myColor}_king.svg" alt="">`;
+      const oppColor = myColor === 'white' ? 'black' : 'white';
+      $('#opponent-piece-icon').innerHTML = `<img src="/assets/pieces/${oppColor}_king.svg" alt="">`;
+      $('#opponent-connection').className = 'connection-dot connected';
+
       gameActive = true;
-      updateStatusText();
-      updateControls();
+      currentTurn = 'white';
+
+      // Re-request game state to get legal moves and full board
+      socket.emit('join-game', { gameId, playerId });
     });
 
     socket.on('move-made', (data) => {
